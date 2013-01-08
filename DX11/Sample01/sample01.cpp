@@ -6,9 +6,12 @@
 
 #include <Windows.h>
 
+#include <crtdbg.h>
 #include <D3D11.h>
 #include <D3DX11.h>
 #include <DxErr.h>
+
+#include "resource.h"
 
 #define SAFE_RELEASE(x) { if(x) { (x)->Release(); (x)=NULL; } } //解放マクロ
 
@@ -57,7 +60,8 @@ HRESULT InitApp(HINSTANCE instance_handle) {
 	window_class.cbClsExtra    = 0;
 	window_class.cbWndExtra    = 0;
 	window_class.hInstance     = instance_handle;
-//	window_class.hIcon         = LoadIcon(instance_handle, (LPCTSTR)IDI_ICON1);
+	window_class.hIcon         = LoadIcon(instance_handle, (LPCTSTR)IDI_ICON1);
+//  window_class.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
 	window_class.hCursor       = LoadCursor(NULL, IDC_ARROW);
 	window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	window_class.lpszMenuName  = NULL;
@@ -243,4 +247,194 @@ HRESULT InitBackBuffer() {
 	g_Viewport[0].MaxDepth = 1.0f;
 
 	return S_OK;
+}
+
+//
+// 画面の描画処理
+HRESULT Render(void)
+{
+	HRESULT result;
+
+	// 描画ターゲットのクリア
+	float clear_color[4] = { 0.0f, 0.125f, 0.3f, 1.0f };
+	g_Immediate_Device_Context->ClearRenderTargetView( g_Render_Target_View, clear_color );
+	
+	// 深度/ステンシル値のクリア
+	g_Immediate_Device_Context->ClearDepthStencilView( g_Depth_Stencil_View, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+	// ラスタライザにビューポートを設定
+	g_Immediate_Device_Context->RSSetViewports(1, g_Viewport);
+
+	// 描画ターゲット・ビューを出力マネージャーの描画ターゲットとして設定
+	g_Immediate_Device_Context->OMSetRenderTargets(	1, &g_Render_Target_View, g_Depth_Stencil_View);
+	
+	//
+	//描画(省力)
+	//
+
+	// バック・バッファの表示
+	result = g_Swap_Chain->Present( 0,    // 画面を直ぐに更新する
+                                  0 );  // 画面を実際に更新する
+
+  return result;
+}
+
+
+//
+// Direct3Dの終了処理
+bool CleanupDirect3D(void)
+{
+  // デバイス・ステートのクリア
+  if(g_Immediate_Device_Context)
+    g_Immediate_Device_Context->ClearState();
+
+  // 取得したインターフェイスの解放
+  SAFE_RELEASE(g_Depth_Stencil_View);
+  SAFE_RELEASE(g_Depth_Stencil_Texture);
+  SAFE_RELEASE(g_Render_Target_View);
+  SAFE_RELEASE(g_Swap_Chain);
+  SAFE_RELEASE(g_Immediate_Device_Context);
+  SAFE_RELEASE(g_D3DDevice);
+
+  return true;
+}
+
+
+//
+// アプリケーションの終了処理
+bool CleanupApp( void )
+{
+  // ウインドウ　クラスの登録解除
+  UnregisterClass(g_Window_Class_Name, g_Instance_Handle);
+  return true;
+}
+
+//
+// ウィンドウ処理
+LRESULT CALLBACK MainWndProc(HWND window_handle, UINT message, UINT w_param, LONG l_param)
+{
+  HRESULT result = S_OK;
+
+  switch(message)
+  {
+  case WM_DESTROY:
+    // Direct3Dの終了処理
+    CleanupDirect3D();
+    // ウインドウを閉じる
+    PostQuitMessage(0);
+    g_Window_Handle = NULL;
+    return 0;
+
+  case WM_KEYDOWN:
+    // キー入力の処理
+    switch(w_param)
+    {
+    case VK_ESCAPE: // [ESC] キーでウインドウを閉じる
+      PostMessage(window_handle, WM_CLOSE, 0, 0);
+      break;
+    }
+    break;
+  }
+
+  // デフォルト処理
+  return DefWindowProc(window_handle, message, w_param, l_param);
+}
+
+//
+// デバイスの消失処理
+HRESULT IsDeviceRemoved(void)
+{
+  HRESULT result;
+
+  // デバイスの消失確認
+  result = g_D3DDevice->GetDeviceRemovedReason();
+  switch(result)
+  {
+  case S_OK:
+    break;  // 正常
+  case DXGI_ERROR_DEVICE_HUNG:
+  case DXGI_ERROR_DEVICE_RESET:
+    DXTRACE_ERR(L"IsDeviceRemoved g_D3DDevice->GetDeviceRemovedReaseon", result);
+    CleanupDirect3D();
+    result = InitDirect3D();
+    if( FAILED(result))
+      return result;
+    break;
+  case DXGI_ERROR_DEVICE_REMOVED:
+  case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
+  case DXGI_ERROR_INVALID_CALL:
+  default: 
+    DXTRACE_ERR(L"IsDeviceRemoved g_pD3DDevice->GetDeviceRemovedReason", result);
+		return result;   // どうしようもないので、アプリケーションを終了。
+  };
+
+  return S_OK;
+}
+
+//
+// アイドル時の処理
+bool AppIdle(void)
+{
+  if(!g_D3DDevice)
+    return false;
+
+  HRESULT result;
+  // デバイスの消失処理
+  result = IsDeviceRemoved();
+  if( FAILED(result))
+    return false;
+
+  // 画面の更新
+  Render();
+
+  return true;
+}
+
+//
+// メイン
+int WINAPI wWinMain( HINSTANCE instance_handle, HINSTANCE, LPWSTR, int)
+{
+  // デバッグ　ヒープ　マネージャによるメモリ割り当ての追跡方法を設定
+  _CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+
+  // アプリケーションに関する初期化
+  HRESULT result = InitApp(instance_handle);
+  if( FAILED( instance_handle))
+  {
+    DXTRACE_ERR(L"WinMain InitApp", result);
+    return 0;
+  }
+
+  // Direct3Dの初期化
+  result = InitDirect3D();
+  if(FAILED(result)) {
+    DXTRACE_ERR(L"WinMain InitDirect3D", result);
+    CleanupDirect3D();
+    CleanupApp();
+    return 0;
+  }
+
+  // メッセージ　ループ
+  MSG message;
+  do
+  {
+    if( PeekMessage( &message, 0, 0, 0, PM_REMOVE))
+    {
+      TranslateMessage(&message);
+      DispatchMessage( &message);
+    }
+    else
+    {
+      // アイドル処理
+      if (!AppIdle()){
+        // エラーがある場合、アプリケーションを終了する
+        DestroyWindow(g_Window_Handle);
+      }
+    }
+  }while(message.message != WM_QUIT);
+
+  // アプリケーションの終了処理
+  CleanupApp();
+
+  return (int)message.wParam;
 }

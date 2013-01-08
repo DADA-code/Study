@@ -69,6 +69,15 @@
   <ItemGroup>
     <ClCompile Include="sample01.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Sample01.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\sample.ico" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
