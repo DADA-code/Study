@@ -1,11 +1,13 @@
+//todo: copylightとかそれ系をちゃんと書く
+
+////////////////////////////////////////////////////////
 #define STRICT                     // 型チェックを厳密に行う
 #define WIN32_LEAN_AND_MEAN        // ヘッダーからまり使われない関数を省く。
 #define WINVER        0x0600       // Windows Vista移行対応アプリ
 #define _WIN32_WINNT  0x0600       // Windows Vista移行対応アプリ
 
-
+////////////////////////////////////////////////////////
 #include <Windows.h>
-
 #include <crtdbg.h>
 #include <D3D11.h>
 #include <D3DX11.h>
@@ -13,10 +15,11 @@
 
 #include "resource.h"
 
+////////////////////////////////////////////////////////
 #define SAFE_RELEASE(x) { if(x) { (x)->Release(); (x)=NULL; } } //解放マクロ
 
-
-// グローバル変数
+////////////////////////////////////////////////////////
+// グローバル変数 (アプリケーション関連
 HINSTANCE g_Instance_Handle = NULL;
 HWND      g_Window_Handle   = NULL;
 
@@ -26,6 +29,10 @@ WCHAR     g_Window_Class_Name[] = L"D3D11S01";
 //起動時の描画領域サイズ
 SIZE      g_Initial_Client_Erea_Size = { 640, 480 };  // ウィンドウのクライアント領域
 
+//スタバイモードフラグ
+bool g_Is_Stanby_Mode = false;
+
+////////////////////////////////////////////////////////
 // グローバル変数(Direct3D関連)
 // 機能レベルの配列
 D3D_FEATURE_LEVEL g_Feature_Levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0 };
@@ -33,6 +40,7 @@ UINT              g_Num_Of_Feature_Levels    = 3; // 配列の要素数
 D3D_FEATURE_LEVEL g_Feature_Levels_Supported;     // デバイス作成時に返される機能レベル
 
 // インターフェイス
+IDXGIFactory*        g_DXGIFactory             = NULL;
 ID3D11Device*        g_D3DDevice                = NULL;
 ID3D11DeviceContext* g_Immediate_Device_Context = NULL;
 IDXGISwapChain*      g_Swap_Chain               = NULL;
@@ -43,12 +51,15 @@ D3D11_VIEWPORT          g_Viewport[1] ;
 ID3D11Texture2D*        g_Depth_Stencil_Texture;
 ID3D11DepthStencilView* g_Depth_Stencil_View; 
 
+float g_Clear_Color[4] = {0.0f, 0.125f, 0.3f, 1.0f };
 
+////////////////////////////////////////////////////////
 // 関数定義
 LRESULT CALLBACK MainWndProc(HWND window_handle, UINT message, UINT parameter, LONG long_paramter);
 HRESULT          InitBackBuffer(void);
 
 
+////////////////////////////////////////////////////////
 HRESULT InitApp(HINSTANCE instance_handle) {
 	// アプリケーションのインスタンスハンドルを保存
 	g_Instance_Handle = instance_handle;
@@ -61,7 +72,6 @@ HRESULT InitApp(HINSTANCE instance_handle) {
 	window_class.cbWndExtra    = 0;
 	window_class.hInstance     = instance_handle;
 	window_class.hIcon         = LoadIcon(instance_handle, (LPCTSTR)IDI_ICON1);
-//  window_class.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
 	window_class.hCursor       = LoadCursor(NULL, IDC_ARROW);
 	window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	window_class.lpszMenuName  = NULL;
@@ -184,6 +194,24 @@ HRESULT InitDirect3D(void)
 		return DXTRACE_ERR(L"InitDirect3D InitBackBuffer", result);
 	}
 
+  /////////////////////////////
+  //!! sample03から追加分  !!//
+  /////////////////////////////
+  
+  // IDXGIFactoryインターフェイスの取得
+  result = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&g_DXGIFactory));
+  if( FAILED(result)) {
+    return DXTRACE_ERR(L"InitDirect3D CreateDXGIFacotry", result);
+  }
+
+  // [Alt]+[Enter]キーによる描画モード切替機能を設定する
+  result = g_DXGIFactory->MakeWindowAssociation(
+    g_Window_Handle,  // 描画モード切替機能を設定するウインドウハンドル
+    0);
+  if(FAILED(result)) {
+    return DXTRACE_ERR(L"InitDirect3D g_DXGIFactory->MakeWindowAssociation", result);
+  }
+
 	return S_OK;
 }
 
@@ -210,6 +238,7 @@ HRESULT InitBackBuffer() {
 		return DXTRACE_ERR(L"InitBackBuffer g_DRDevice->CreateRenderTargetView", result); //失敗
 	}
 
+#if 0
 	// 深度/ステンシル・テクスチャの作成
 	D3D11_TEXTURE2D_DESC depth_stencil_desc = back_buffer_desc;
 	depth_stencil_desc.MipLevels = 1;
@@ -219,6 +248,8 @@ HRESULT InitBackBuffer() {
 	depth_stencil_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	depth_stencil_desc.CPUAccessFlags = 0;
 	depth_stencil_desc.MiscFlags      = 0;
+
+
 	result = g_D3DDevice->CreateTexture2D(
 		&depth_stencil_desc,
 		NULL,
@@ -237,6 +268,7 @@ HRESULT InitBackBuffer() {
 	if(FAILED(result)) {
 		return DXTRACE_ERR(L"InitBackBuffer g_D3DDevice->CreateDepthStencilView", result);
 	}
+#endif
 
 	// ビューポートの設定
 	g_Viewport[0].TopLeftX = 0.0f;
